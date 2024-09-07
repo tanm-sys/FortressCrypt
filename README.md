@@ -62,8 +62,8 @@ Ensure you have the following components installed before setting up the project
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/your-username/defense-security-system.git
-   cd defense-security-system
+   git clone https://github.com/tanm-sys/FortressCrypt.git
+   cd FortressCrypt
    ```
 
 2. **Configure Dependencies**:  
