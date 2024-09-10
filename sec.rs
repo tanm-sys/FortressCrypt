@@ -41,7 +41,7 @@ mod auth {
 
 mod hsm {
     use std::error::Error;
-    
+
     pub fn store_and_retrieve_key(role: &str) -> Result<Vec<u8>, Box<dyn Error>> {
         // Integrate with a real HSM service for secure key management
         let key = vec![0x01, 0x02, 0x03, 0x04]; // Replace with HSM interaction
@@ -165,9 +165,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         username: "secure_user".to_string(),
         password: "secure_password".to_string(),
     };
-    
+
     let metadata = Metadata { info: "Highly sensitive operation".to_string() };
-    
+
     // 2. Multi-Factor Authentication (MFA) Enforcement
     auth::authenticate_user(&credentials)?;
     auth::enforce_mfa(&credentials)?;
@@ -183,7 +183,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let operation_mode = OperationMode::Encrypt;
-    
+
     let result_data = match operation_mode {
         OperationMode::Encrypt => {
             let encrypted_data = crypto::encrypt_data(&data.content, &key)?;
@@ -212,6 +212,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // 8. Perform Regular Security Audits
     security_audits::perform_audit();
-    
+
     Ok(())
 }
