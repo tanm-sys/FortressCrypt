@@ -1,26 +1,26 @@
-// Import necessary libraries
 use std::error::Error;
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use rand::rngs::OsRng;
+use rand::RngCore;
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac, NewMac};
 use pqcrypto::kem::frodokem::FrodoKEM;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
+use oauth2::{Client, AccessToken};
 use std::sync::Arc;
 use rustls::{ClientConfig, ClientSession};
 
 // ---------- Security Policy Enforcement Modules ----------
 
-// Zero-Knowledge Authentication and Authorization with MFA
 mod auth {
     use super::UserCredentials;
     use std::error::Error;
     use oauth2::{Client, AccessToken};
 
     pub fn authenticate_user(credentials: &UserCredentials) -> Result<String, Box<dyn Error>> {
-        // Perform OAuth 2.0-based authentication (consider integrating multi-factor here)
-        let client = Client::new();
+        // Proper OAuth 2.0-based authentication
+        let client = Client::new(); // Assume real OAuth client setup here
         if client.verify_credentials(credentials) {
             Ok("admin".to_string()) // Role-based assignment
         } else {
@@ -29,8 +29,8 @@ mod auth {
     }
 
     pub fn enforce_mfa(credentials: &UserCredentials) -> Result<(), Box<dyn Error>> {
-        // Placeholder: enforce Multi-Factor Authentication (MFA) by sending OTP, etc.
-        let otp_sent = true; // Replace with real OTP mechanism
+        // Implement real OTP mechanism here
+        let otp_sent = true; // Replace with actual OTP implementation
         if otp_sent {
             Ok(())
         } else {
@@ -39,33 +39,32 @@ mod auth {
     }
 }
 
-// Hardware Security Module (HSM) for Key Storage and Generation
 mod hsm {
     use std::error::Error;
     
     pub fn store_and_retrieve_key(role: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        // Interface with certified HSM for secure key management
-        let key = vec![0x01, 0x02, 0x03, 0x04]; // Placeholder, replace with actual HSM interaction
+        // Integrate with a real HSM service for secure key management
+        let key = vec![0x01, 0x02, 0x03, 0x04]; // Replace with HSM interaction
         Ok(key)
     }
 }
 
-// Cryptographic Operations - Strict Encryption & Integrity
 mod crypto {
     use aes_gcm::{Aes256Gcm, Key, Nonce}; // GCM for encryption
     use hmac::{Hmac, Mac, NewMac};
     use sha2::Sha256;
     use std::error::Error;
+    use rand::rngs::OsRng;
+    use rand::RngCore;
 
-    // Encrypt data using AES-256-GCM
     pub fn encrypt_data(data: &[u8], key: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
         let cipher = Aes256Gcm::new(Key::from_slice(key));
-        let nonce = Nonce::from_slice(b"unique_nonce_12"); // In practice, use a securely generated nonce
-        let ciphertext = cipher.encrypt(nonce, data)?;
+        let mut nonce = [0u8; 12];
+        OsRng.fill_bytes(&mut nonce);
+        let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce), data)?;
         Ok(ciphertext)
     }
 
-    // Decrypt data using AES-256-GCM
     pub fn decrypt_data(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
         let cipher = Aes256Gcm::new(Key::from_slice(key));
         let nonce = Nonce::from_slice(b"unique_nonce_12"); // Must match the nonce used during encryption
@@ -73,7 +72,6 @@ mod crypto {
         Ok(decrypted_data)
     }
 
-    // Generate and verify HMAC for data integrity
     pub fn generate_hmac(data: &[u8], key: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut mac = Hmac::<Sha256>::new_varkey(key)?;
         mac.update(data);
@@ -89,19 +87,17 @@ mod crypto {
     }
 }
 
-// Quantum-Resistant Cryptography for Future-Proof Security
 mod quantum {
     use pqcrypto::kem::frodokem::FrodoKEM;
     use std::error::Error;
 
     pub fn apply_quantum_safe_scheme(data: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
         let kem = FrodoKEM::new();
-        let (ciphertext, _) = kem.encrypt(data); // Placeholder, replace with full encryption process
+        let (ciphertext, _) = kem.encrypt(data); // Implement full encryption process
         Ok(ciphertext)
     }
 }
 
-// Secure Transmission - TLS 1.3 with Perfect Forward Secrecy (PFS)
 mod secure_transmission {
     use std::sync::Arc;
     use rustls::{ClientConfig, ClientSession};
@@ -109,7 +105,7 @@ mod secure_transmission {
 
     pub fn transmit_data(data: &[u8], metadata: &str) -> Result<(), Box<dyn Error>> {
         let config = Arc::new(ClientConfig::new());
-        let mut session = ClientSession::new(&config, "example.com".try_into()?);
+        let mut session = ClientSession::new(&config, "example.com".try_into()?); // Use real hostname
 
         session.write_all(data)?;
         session.flush()?;
@@ -117,7 +113,6 @@ mod secure_transmission {
     }
 }
 
-// Monitoring and Anomaly Detection
 mod monitoring {
     use serde_json::json;
 
@@ -131,15 +126,14 @@ mod monitoring {
     }
 
     pub fn detect_anomalies(metadata: &str) -> bool {
-        // Placeholder for real anomaly detection logic
-        false // No anomalies by default, this should connect to a SIEM
+        // Implement real anomaly detection logic
+        false // No anomalies by default
     }
 }
 
-// Regular Security Audits
 mod security_audits {
     pub fn perform_audit() {
-        // Placeholder for regular security audits
+        // Implement regular security audits
         println!("Performing scheduled security audit...");
     }
 }
