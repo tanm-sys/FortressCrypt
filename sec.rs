@@ -7,6 +7,8 @@ use hmac::{Hmac, Mac, NewMac};
 use pqcrypto::kem::frodokem::FrodoKEM;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
+use std::sync::Arc;
+use rustls::{ClientConfig, ClientSession};
 
 // ---------- Security Policy Enforcement Modules ----------
 
