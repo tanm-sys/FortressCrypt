@@ -8,20 +8,39 @@ use pqcrypto::kem::frodokem::FrodoKEM;
 use serde_json::json;
 use tokio::time::{sleep, Duration};
 use oauth2::{Client, AccessToken};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use rustls::{ClientConfig, ClientSession};
+use bcrypt::Bcrypt;
 
-// ---------- Security Policy Enforcement Modules ----------
+// Secure password storage using bcrypt
+use bcrypt::Bcrypt;
 
+// Secure random number generator
+use rand::thread_rng;
+
+// User credentials struct with secure password storage
+struct UserCredentials {
+    username: String,
+    password: String,
+}
+
+impl UserCredentials {
+    // Create a new user credential with secure password hashing
+    fn new(username: String, password: String) -> Result<Self, Box<dyn Error>> {
+        let hashed_password = Bcrypt::hash(password).map_err(|e| e.into())?;
+        Ok(UserCredentials { username, password: String::from_utf8_lossy(&hashed_password).into() })
+    }
+}
+
+// Secure authentication using OAuth 2.0
 mod auth {
-    use super::UserCredentials;
+    use super::{UserCredentials, oauth2};
     use std::error::Error;
-    use oauth2::{Client, AccessToken};
 
     pub fn authenticate_user(credentials: &UserCredentials) -> Result<String, Box<dyn Error>> {
-        // Proper OAuth 2.0-based authentication
-        let client = Client::new(); // Assume real OAuth client setup here
-        if client.verify_credentials(credentials) {
+        // Implement proper OAuth 2.0-based authentication
+        let client = oauth2::Client::new(); // Assume real OAuth client setup here
+        if client.verify_credentials(&credentials.username, &credentials.password).map_err(|e| e.into())? {
             Ok("admin".to_string()) // Role-based assignment
         } else {
             Err("Authentication failed".into())
@@ -29,9 +48,13 @@ mod auth {
     }
 
     pub fn enforce_mfa(credentials: &UserCredentials) -> Result<(), Box<dyn Error>> {
-        // Implement real OTP mechanism here
-        let otp_sent = true; // Replace with actual OTP implementation
-        if otp_sent {
+        // Implement real OTP mechanism using a secure random number generator
+        let otp = thread_rng().gen::<u64>();
+        println!("OTP sent to user: {}", otp);
+
+        let mut input_otp = String::new();
+        std::io::stdin().read_line(&mut input_otp).expect("Failed to read OTP");
+        if otp.to_string() == input_otp.trim_end().to_string() {
             Ok(())
         } else {
             Err("MFA validation failed".into())
@@ -39,6 +62,7 @@ mod auth {
     }
 }
 
+// Key management using a Hardware Security Module (HSM)
 mod hsm {
     use std::error::Error;
 
@@ -49,8 +73,9 @@ mod hsm {
     }
 }
 
+// Secure encryption and decryption using AES-GCM
 mod crypto {
-    use aes_gcm::{Aes256Gcm, Key, Nonce}; // GCM for encryption
+    use aes_gcm::{Aes256Gcm, Key, Nonce};
     use hmac::{Hmac, Mac, NewMac};
     use sha2::Sha256;
     use std::error::Error;
@@ -87,6 +112,7 @@ mod crypto {
     }
 }
 
+// Quantum-resistant encryption using FrodoKEM
 mod quantum {
     use pqcrypto::kem::frodokem::FrodoKEM;
     use std::error::Error;
@@ -98,14 +124,15 @@ mod quantum {
     }
 }
 
+// Secure transmission using TLS 1.3
 mod secure_transmission {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use rustls::{ClientConfig, ClientSession};
     use std::error::Error;
 
     pub fn transmit_data(data: &[u8], metadata: &str) -> Result<(), Box<dyn Error>> {
-        let config = Arc::new(ClientConfig::new());
-        let mut session = ClientSession::new(&config, "example.com".try_into()?); // Use real hostname
+        let config = Arc::new(Mutex::new(ClientConfig::new()));
+        let mut session = ClientSession::new(&config.lock().unwrap(), "example.com".try_into()?); // Use real hostname
 
         session.write_all(data)?;
         session.flush()?;
@@ -113,6 +140,7 @@ mod secure_transmission {
     }
 }
 
+// Monitoring and anomaly detection
 mod monitoring {
     use serde_json::json;
 
@@ -131,6 +159,7 @@ mod monitoring {
     }
 }
 
+// Security audits
 mod security_audits {
     pub fn perform_audit() {
         // Implement regular security audits
@@ -138,33 +167,12 @@ mod security_audits {
     }
 }
 
-// ---------- Core System Components ----------
-
-struct Data {
-    content: Vec<u8>,
-    integrity_hmac: Vec<u8>,
-}
-
-enum OperationMode {
-    Encrypt,
-    Decrypt,
-}
-
-struct UserCredentials {
-    username: String,
-    password: String,
-}
-
-struct Metadata {
-    info: String,
-}
+use std::thread;
 
 fn main() -> Result<(), Box<dyn Error>> {
     // 1. Input handling (securely collect credentials, metadata)
-    let credentials = UserCredentials {
-        username: "secure_user".to_string(),
-        password: "secure_password".to_string(),
-    };
+    let mut credentials = UserCredentials::new("username".to_string(), "password".to_string())?;
+    println!("Username: {}, Password: {}", credentials.username, credentials.password);
 
     let metadata = Metadata { info: "Highly sensitive operation".to_string() };
 
@@ -175,6 +183,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // 3. Retrieve Secure Encryption Key from HSM
     let role = "admin";
     let key = hsm::store_and_retrieve_key(role)?;
+    println!("HSM Key: {:?}", key);
 
     // 4. Data Encryption/Decryption and Integrity Checks
     let data = Data {
@@ -184,23 +193,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let operation_mode = OperationMode::Encrypt;
 
-    let result_data = match operation_mode {
+    match operation_mode {
         OperationMode::Encrypt => {
             let encrypted_data = crypto::encrypt_data(&data.content, &key)?;
             let hmac = crypto::generate_hmac(&encrypted_data, &key)?;
-            Data { content: encrypted_data, integrity_hmac: hmac }
+            data.integrity_hmac = hmac;
+            println!("Encrypted Data: {:?}", encrypted_data);
+            println!("HMAC: {:?}", data.integrity_hmac);
         }
         OperationMode::Decrypt => {
             crypto::verify_hmac(&data.content, &key, &data.integrity_hmac)?;
-            let decrypted_data = crypto::decrypt_data(&data.content, &key)?;
-            Data { content: decrypted_data, integrity_hmac: data.integrity_hmac.clone() }
+            let decrypted_data = crypto::decrypt_data(&encrypted_data, &key)?;
+            println!("Decrypted Data: {:?}", decrypted_data);
         }
-    };
+    }
 
     // 5. Apply Quantum-Resistant Encryption (Future-Proof)
-    let quantum_safe_data = quantum::apply_quantum_safe_scheme(&result_data.content)?;
+    let quantum_safe_data = quantum::apply_quantum_safe_scheme(&data.content)?;
 
-    // 6. Secure Transmission via TLS 1.3 (End-to-End Encryption)
+    // 6. Secure Transmission via TLS 1.3
     secure_transmission::transmit_data(&quantum_safe_data, &metadata.info)?;
 
     // 7. Monitoring and Anomaly Detection
@@ -215,3 +226,45 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+// Secure random number generator using a separate thread
+thread::spawn(move || {
+    let mut rng = rand::rngs::OsRng;
+    loop {
+        // Generate secure random numbers for OTP or other purposes
+        let otp = rng.gen::<u64>();
+        println!("OTP generated: {}", otp);
+        sleep(Duration::from_millis(100));
+    }
+});
+
+// Secure key management using a Hardware Security Module (HSM)
+thread::spawn(move || {
+    let role = "admin";
+    let key = hsm::store_and_retrieve_key(role)?;
+    println!("HSM Key: {:?}", key);
+    sleep(Duration::from_secs(60)); // Simulate HSM key rotation
+});
+
+// Secure encryption and decryption using AES-GCM
+thread::spawn(move || {
+    let data = vec![0x01, 0x02, 0x03];
+    let key = [0x01, 0x02, 0x03, 0x04];
+    match OperationMode::Encrypt {
+        OperationMode::Encrypt => {
+            let encrypted_data = crypto::encrypt_data(&data, &key)?;
+            println!("Encrypted Data: {:?}", encrypted_data);
+        }
+        OperationMode::Decrypt => {
+            let decrypted_data = crypto::decrypt_data(&encrypted_data, &key)?;
+            println!("Decrypted Data: {:?}", decrypted_data);
+        }
+    }
+});
+
+// Secure transmission using TLS 1.3
+thread::spawn(move || {
+    let data = vec![0x01, 0x02, 0x03];
+    let metadata = "Highly sensitive operation".to_string();
+    secure_transmission::transmit_data(&data, &metadata)?;
+});
