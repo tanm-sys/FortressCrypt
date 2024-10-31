@@ -1,0 +1,52 @@
+version: '3'
+
+services:
+  main:
+    image: ${IMAGE_NAME}
+    build:
+      dockerfile: Dockerfile
+      context: .
+    ports:
+      - "8080:8080"
+      - "4444:4444"
+    depends_on:
+      - db
+      - mfa
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - DATABASE_URL=localhost:5432/database
+
+  db:
+    image: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./db:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+
+  mfa:
+    image: otp-gen
+    build:
+      - ./
+    ports:
+      - "4444:4444"
+
+  otp-gen:
+    image: otp-gen
+    volumes:
+      - /usr/bin:
+
+variables:
+  IMAGE_NAME: ${IMAGE_NAME}
+  DATABASE_URL: db://localhost:5432/database
+
+dependencies:
+  - postgres
+  - otp-gen
+
+build:
+  stage: build
+  script:
+    - cargo build --release
