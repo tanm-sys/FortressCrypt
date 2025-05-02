@@ -1,3 +1,4 @@
+// Import necessary crates and modules
 use std::error::Error;
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use rand::rngs::OsRng;
@@ -17,23 +18,17 @@ use std::net::TcpStream;
 use std::thread;
 
 // Secure password storage using bcrypt
-use bcrypt::Bcrypt;
-
-// Secure random number generator
-use rand::thread_rng;
-
-// User credentials struct with secure password storage
 #[derive(Debug)]
 struct UserCredentials {
     username: String,
-    password: String,
+    password_hash: Vec<u8>,
 }
 
 impl UserCredentials {
     // Create a new user credential with secure password hashing
     fn new(username: String, password: String) -> Result<Self, Box<dyn Error>> {
-        let hashed_password = Bcrypt::hash(password).map_err(|e| e.into())?;
-        Ok(UserCredentials { username, password: String::from_utf8(hashed_password)? })
+        let hashed_password = Bcrypt::hash(password)?;
+        Ok(UserCredentials { username, password_hash: hashed_password })
     }
 }
 
@@ -44,7 +39,11 @@ mod auth {
 
     pub fn authenticate_user(credentials: &UserCredentials) -> Result<String, Box<dyn Error>> {
         let client = oauth2::Client::new();
-        let token = client.request_token(AuthUrl::parse("https://example.com/oauth/token")?, &credentials.username, &credentials.password)?;
+        let token = client.request_token(
+            AuthUrl::parse("https://oauth-provider.com/token")?,
+            &credentials.username,
+            &credentials.password_hash,
+        )?;
         if token.access_token().is_valid() {
             Ok("admin".to_string())
         } else {
@@ -52,9 +51,12 @@ mod auth {
         }
     }
 
-    pub fn enforce_mfa(credentials: &UserCredentials) -> Result<(), Box<dyn Error>> {
-        let otp = thread_rng().gen::<u64>();
-        println!("OTP sent to user: {}", otp);
+    pub fn enforce_mfa() -> Result<(), Box<dyn Error>> {
+        let mut rng = rand::thread_rng();
+        let mut otp: [u8; 6] = [0; 6];
+        rng.fill(&mut otp);
+
+        println!("OTP sent to user: {:?}", otp);
 
         loop {
             let mut input_otp = String::new();
@@ -62,7 +64,12 @@ mod auth {
             io::stdout().flush().unwrap();
             io::stdin().read_line(&mut input_otp).expect("Failed to read OTP");
 
-            if otp.to_string() == input_otp.trim_end().to_string() {
+            let input_otp_bytes = match hex::decode(input_otp.trim()) {
+                Ok(bytes) => bytes,
+                Err(_) => continue,
+            };
+
+            if otp == input_otp_bytes {
                 break Ok(());
             } else {
                 println!("Invalid OTP. Please try again.");
@@ -76,8 +83,8 @@ mod hsm {
     use std::error::Error;
 
     pub fn store_and_retrieve_key(role: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-        // Integrate with a real HSM service for secure key management
-        let key = vec![0x01, 0x02, 0x03, 0x04]; // Replace with HSM interaction
+        // Placeholder for actual HSM integration
+        let key = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
         Ok(key)
     }
 }
@@ -91,17 +98,20 @@ mod crypto {
     use rand::rngs::OsRng;
     use rand::RngCore;
 
-    pub fn encrypt_data(data: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
+    pub fn encrypt_data(data: &[u8], key: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+        let mut nonce = [0u8; 12];
+        let mut rng = OsRng;
+        rng.fill_bytes(&mut nonce);
+
         let cipher = Aes256Gcm::new(Key::from_slice(key));
-        let nonce = Nonce::from_slice(nonce);
-        let ciphertext = cipher.encrypt(nonce, data)?;
-        Ok(ciphertext)
+        let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce), data)?;
+
+        Ok((ciphertext, nonce.to_vec()))
     }
 
     pub fn decrypt_data(ciphertext: &[u8], key: &[u8], nonce: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
         let cipher = Aes256Gcm::new(Key::from_slice(key));
-        let nonce = Nonce::from_slice(nonce);
-        let decrypted_data = cipher.decrypt(nonce, ciphertext)?;
+        let decrypted_data = cipher.decrypt(Nonce::from_slice(nonce), ciphertext)?;
         Ok(decrypted_data)
     }
 
@@ -115,7 +125,7 @@ mod crypto {
     pub fn verify_hmac(data: &[u8], key: &[u8], expected_hmac: &[u8]) -> Result<(), Box<dyn Error>> {
         let mut mac = Hmac::<Sha256>::new_varkey(key)?;
         mac.update(data);
-        mac.verify(expected_hmac)?;
+        mac.verify_slice(expected_hmac)?;
         Ok(())
     }
 }
@@ -146,18 +156,13 @@ mod secure_transmission {
         }));
 
         let config = Arc::new(Mutex::new(config));
-        let mut session = ClientSession::new(&config.lock().unwrap(), "example.com".try_into()?); // Use real hostname
+        let mut session = ClientSession::new(&config.lock().unwrap(), "example.com".try_into()?);
 
         let mut stream = TcpStream::connect("example.com:443")?;
-        session.complete handshake(stream)?; // Complete TLS handshake
+        session.complete_handshake(&mut stream)?;
 
         session.write_all(data)?;
         session.flush()?;
-        Ok(())
-    }
-
-    fn complete_handshake(mut stream: TcpStream) -> Result<(), Box<dyn Error>> {
-        // Implement TLS handshake completion
         Ok(())
     }
 }
@@ -171,19 +176,12 @@ mod monitoring {
             "event": "data_transmission",
             "metadata": metadata
         });
-        if let Err(e) = send_log_to_siem(log_entry) {
-            eprintln!("Failed to log event: {}", e);
-        }
+        println!("Log entry: {}", log_entry);
     }
 
     pub fn detect_anomalies(metadata: &str) -> bool {
-        // Implement real anomaly detection logic
-        false // No anomalies by default
-    }
-
-    fn send_log_to_siem(log_entry: serde_json::Value) -> Result<(), Box<dyn Error>> {
-        // Implement sending log entry to a SIEM
-        Ok(())
+        // Placeholder for actual anomaly detection logic
+        false
     }
 }
 
@@ -191,56 +189,34 @@ mod monitoring {
 mod security_audits {
     pub fn perform_audit() {
         println!("Performing scheduled security audit...");
-
-        // Example: Check for outdated dependencies, misconfigurations, etc.
-        check_for_outdated_dependencies();
-        check_for_misconfigurations();
-    }
-
-    fn check_for_outdated_dependencies() {
-        // Implement dependency check
-    }
-
-    fn check_for_misconfigurations() {
-        // Implement misconfiguration check
+        // Placeholder for actual security checks
     }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     // 1. Input handling (securely collect credentials, metadata)
     let credentials = UserCredentials::new("username".to_string(), "password".to_string())?;
-    println!("Username: {}, Password: {}", credentials.username, credentials.password);
-
     let metadata = "Highly sensitive operation";
 
     // 2. Multi-Factor Authentication (MFA) Enforcement
     auth::authenticate_user(&credentials)?;
-    auth::enforce_mfa(&credentials)?;
+    auth::enforce_mfa()?;
 
     // 3. Retrieve Secure Encryption Key from HSM
     let role = "admin";
     let key = hsm::store_and_retrieve_key(role)?;
-    println!("HSM Key: {:?}", key);
 
     // 4. Data Encryption/Decryption and Integrity Checks
     let data = vec![0x01, 0x02, 0x03]; // Placeholder for sensitive data
-    let nonce = [0u8; 12];
 
-    let operation_mode = OperationMode::Encrypt;
+    // Encrypt data
+    let (encrypted_data, nonce) = crypto::encrypt_data(&data, &key)?;
+    println!("Encrypted Data: {:?}", encrypted_data);
+    println!("Nonce: {:?}", nonce);
 
-    match operation_mode {
-        OperationMode::Encrypt => {
-            let encrypted_data = crypto::encrypt_data(&data, &key, &nonce)?;
-            let hmac = crypto::generate_hmac(&encrypted_data, &key)?;
-            println!("Encrypted Data: {:?}", encrypted_data);
-            println!("HMAC: {:?}", hmac);
-        }
-        OperationMode::Decrypt => {
-            crypto::verify_hmac(&data, &key, &hmac)?;
-            let decrypted_data = crypto::decrypt_data(&encrypted_data, &key, &nonce)?;
-            println!("Decrypted Data: {:?}", decrypted_data);
-        }
-    }
+    // Generate HMAC for integrity
+    let hmac = crypto::generate_hmac(&encrypted_data, &key)?;
+    println!("HMAC: {:?}", hmac);
 
     // 5. Apply Quantum-Resistant Encryption (Future-Proof)
     let quantum_safe_data = quantum::apply_quantum_safe_scheme(&data)?;
@@ -263,26 +239,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 // Secure random number generator using a separate thread
 thread::spawn(move || {
-    let mut rng = OsRng;
     loop {
-        if let Err(e) = generate_secure_random_number(rng) {
-            eprintln!("Error generating random number: {}", e);
-        }
+        let mut rng = OsRng;
+        let otp = rng.gen::<u64>();
+        println!("OTP generated: {}", otp);
         sleep(Duration::from_millis(100));
     }
 });
 
-fn generate_secure_random_number(rng: OsRng) -> Result<(), Box<dyn Error>> {
-    let otp = rng.gen::<u64>();
-    println!("OTP generated: {}", otp);
-    Ok(())
-}
-
 // Secure key management using a Hardware Security Module (HSM)
 thread::spawn(move || {
     let role = "admin";
-    if let Err(e) = hsm::store_and_retrieve_key(role) {
-        eprintln!("Error retrieving key from HSM: {}", e);
+    match hsm::store_and_retrieve_key(role) {
+        Ok(key) => println!("HSM Key retrieved: {:?}", key),
+        Err(e) => eprintln!("Error retrieving key from HSM: {}", e),
     }
     sleep(Duration::from_secs(60)); // Simulate HSM key rotation
 });
@@ -290,20 +260,14 @@ thread::spawn(move || {
 // Secure encryption and decryption using AES-GCM
 thread::spawn(move || {
     let data = vec![0x01, 0x02, 0x03];
-    let key = [0x01, 0x02, 0x03, 0x04];
-    let nonce = [0u8; 12];
+    let key = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
 
-    match OperationMode::Encrypt {
-        OperationMode::Encrypt => {
-            if let Err(e) = crypto::encrypt_data(&data, &key, &nonce) {
-                eprintln!("Error encrypting data: {}", e);
-            }
+    match crypto::encrypt_data(&data, &key) {
+        Ok((encrypted_data, nonce)) => {
+            println!("Encrypted Data: {:?}", encrypted_data);
+            println!("Nonce: {:?}", nonce);
         }
-        OperationMode::Decrypt => {
-            if let Err(e) = crypto::decrypt_data(&data, &key, &nonce) {
-                eprintln!("Error decrypting data: {}", e);
-            }
-        }
+        Err(e) => eprintln!("Error encrypting data: {}", e),
     }
 });
 
